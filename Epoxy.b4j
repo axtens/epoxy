@@ -1,0 +1,106 @@
+﻿AppType=StandardJava
+Build1=Default,b4j.example
+Group=Default Group
+Library1=jcore
+Library2=jsql
+Library3=jserver
+Module1=DBUtils
+Module10=ErrorHandler
+Module2=MainHandler
+Module3=ExportHandler
+Module4=ImportHandler
+Module5=ShutdownHandler
+Module6=CountHandler
+Module7=ListHandler
+Module8=VersionHandler
+Module9=RemoveHandler
+NumberOfFiles=0
+NumberOfLibraries=3
+NumberOfModules=10
+Version=7.8
+@EndOfDesignText@
+	'Non-UI application (console / server application)
+#Region  Project Attributes 
+	#CommandLineArgs: 54321
+	#MergeLibraries: True 
+	#AdditionalJar: sqlite-jdbc-3.7.2.jar
+    #VirtualMachineArgs: -Xms1024m
+#End Region
+
+'"2016.02.18.6" 'usecount should have been INTEGER; was NUMERIC
+'.9 making proxy UNIQUE
+'.10 False on AddHandler
+'2016.02.19.1 removed pid, and made proxy the primary key
+'2016.02.19.2 reverse the False on AddHandler
+'.3 turn off wal and put databaes in memory
+'20.1 replace usecount with msec and use for proxy choice
+'20.2 added /list/all
+'20.3 jsonOffset
+'20.4 DELETE does not delete. It sets efficacy to 0 and msec to 65535
+'21.1 remove efficacy. sort on msec. replace get json with get one record with inuse. delete decprecates but doesn't delete.
+'	The problem with this DELETE behaviour is that it accrues proxies. Perhaps /proxy/remove is indicated
+'21.2 added /proxy/removed
+'21.3 back to same problem of too many outgoings before an incoming. am putting a delay after the get
+'23.1 DELETE to set msec to 65536 otherwise default msec is 32768
+'24.1 Change log message on DELETE to DEPRECATED
+'24.2 Added colouration to the listing. Deprecated red, unchecked yellow, good green.
+'25.1 Added reason (for failure) 
+'26.1 Fixed POST handler to handle reason
+'28.1 reestablish counter
+'2016.03.03.1 return RETRY if run out of proxies
+'03.2 As a Service
+'04.1 LogDebug instead of Log
+
+Sub Process_Globals
+	Public gVersion As String = "2016.03.04.1"
+	Public gSql As SQL
+	Public gSrvr As Server
+    Public is2close As Boolean = False
+	Private timer1 As Timer
+	Public jsonOffset As Int = 0
+	Public proxiesTxt As String = "c:\web\proxies.txt"
+End Sub
+
+Sub AppStart (Args() As String)
+	gSql.InitializeSQLite(":memory:","",True)
+	gSql.ExecNonQuery("CREATE TABLE IF NOT EXISTS Proxies (proxy TEXT UNIQUE PRIMARY KEY, msec INTEGER, counter INTEGER, inuse NUMERIC, reason TEXT)")
+
+    Dim port As Int
+    port = 8888
+    If Args.Length > 0 Then
+            port = Args(0)
+    End If
+    gSrvr.Initialize("srvr")
+    gSrvr.Port = port
+  
+  	gSrvr.AddHandler("/epoxy", "MainHandler", False) 'GET/PUT/POST/DELETE
+	gSrvr.AddHandler("/epoxy/remove", "RemoveHandler", False) 'DELETE
+	gSrvr.AddHandler("/epoxy/export", "ExportHandler", False) 'PUT
+	gSrvr.AddHandler("/epoxy/import", "ImportHandler",False) 'GET
+	gSrvr.AddHandler("/epoxy/count","CountHandler",False) 'GET
+	gSrvr.AddHandler("/epoxy/list","ListHandler",False) 'GET
+	gSrvr.AddHandler("/epoxy/list/all","ListHandler",False) 'GET 
+	gSrvr.AddHandler("/epoxy/shutdown","ShutdownHandler", False) 'PUT
+	gSrvr.AddHandler("/epoxy/version","VersionHandler",False) 'GET
+	gSrvr.AddHandler("/epoxy/error","ErrorHandler",False) 'PUT
+	gSrvr.Start
+	
+	LogDebug("Server " & gVersion & " starting")
+
+    timer1.Initialize("timer1", 5000)
+    timer1.Enabled=True
+		
+	StartMessageLoop
+
+End Sub
+		
+Sub timer1_tick
+    If is2close=True Then
+        StopMessageLoop
+        timer1.Enabled=False
+		'gSql.ExecNonQuery("VACUUM")
+		gSql.Close
+        ExitApplication
+    End If
+End Sub
+
